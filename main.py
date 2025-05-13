@@ -3,30 +3,29 @@ from datetime import datetime
 from pathlib import Path
 import re
 import shutil
+import time
 
 import numpy as np
 import pandas as pd
 import chromadb
 import ollama
 import PyPDF2
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 from sentence_transformers import SentenceTransformer
 from semantic_chunker.core import SemanticChunker
 from semantic_text_splitter import TextSplitter
 from sklearn.metrics.pairwise import cosine_similarity
 from dotenv import load_dotenv
 
-
-# Initialize the OpenAI client with your API key
-client = OpenAI(api_key=os.getenv('api_key'))
-
 chroma_client = chromadb.Client()
 chroma_client = chromadb.PersistentClient(path="db")
 collection = chroma_client.get_or_create_collection(name="artigo")
 
 
-def configure():
-    load_dotenv()
+load_dotenv()
+
+# Initialize the OpenAI client with your API key
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 def read_file(file_path: Path) -> str:
     """
@@ -85,9 +84,9 @@ def chunk_text_by_character(text: str, max_chunk_length: int = 1000) -> list:
     return chunks
 
 
-def chunk_text_by_semantic(text: str, max_chunk_length: int = 2000) -> list:
+def chunk_text_by_semantic(text: str, max_chunk_length: int = 2500) -> list:
     max_characters = 200
-    splitter = TextSplitter((200, 2000))
+    splitter = TextSplitter((200, 2500))
     chunks_no_model = splitter.chunks(text)
     for i, pedaco in enumerate(chunks_no_model):
         collection.add(documents=pedaco, ids=[str(i)])
@@ -102,12 +101,14 @@ def embed_chunks(chunks: list, embedder):
     Compute embedding for each chunk.
     """
     for i, chunk in enumerate(chunks):
+        '''
         embedding = embedder.encode(chunk)
         collection.add(
             documents=[chunk],
             embeddings=[embedding.tolist()],
             ids=[str(i)]
-        )
+        )'''
+        collection.add(documents=chunk, ids=[str(i)])
 
 
 def retrieve_relevant_chunks(query: str, chunks: list, embeddings: np.array,
@@ -181,7 +182,7 @@ def check_for_files(file_path: Path):
 
 
 def preprocess_question(question):
-    system_instruction = "Você é um assistente que reformula perguntas para que fiquem mais objetivas e claras no contexto de RPG de mesa Old Dragon. Deixe a pergunta mais direta sem mudar o sentido."
+    system_instruction = "Você é um assistente que reformula perguntas ou solicitações para que fiquem mais objetivas e claras no contexto de RPG de mesa Old Dragon. Deixe a pergunta mais direta sem mudar o sentido."
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -195,7 +196,7 @@ def preprocess_question(question):
 def rag_operation():
 
     prompt = """
-    Você é um assistente de RPG de mesa sobre o sistema de regras Old Dragon.
+    Você é um assistente de Guia Turístico do Estado do Amazonas.
     Use o seguinte contexto para responder a questão, não use nenhuma informação adicional, se não houver informacao no contexto, responda: Desculpe mas não consigo ajudar.
     Sempre termine a resposta com: Foi um prazer lhe atender.
     """
@@ -203,6 +204,7 @@ def rag_operation():
     while True:
         user_text = input('Usuário: ')
         processed_question = preprocess_question(user_text)
+        print(processed_question)
         '''relevant_chunks = retrieve_relevant_chunks(
         user_text, chunks, embedder, top_k=3)'''
         #its using diferent embedders, maybe cause bug
@@ -218,8 +220,10 @@ def rag_operation():
             messages=messages_v
         )
         print(f"Assistente: {completion.choices[0].message.content}")
+        time.sleep(20)
         messages_v.append(
             {'role': 'system', 'content': completion.choices[0].message.content})
+        
 
 
 def main():
