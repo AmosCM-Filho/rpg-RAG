@@ -93,8 +93,10 @@ def retrieve_relevant_chunks(query: str, chunks: list, chunk_embeddings: np.ndar
     Retrieve top_k chunks that are most similar to the query.
     """
     query_embedding = embedder.encode(query)
-    best_match_id = cosine_similarity(np.array(chunk_embeddings), np.array(query_embedding).reshape(1,-1)).argmax()
-    return [chunks[best_match_id]]
+    similarities = cosine_similarity(np.array(chunk_embeddings), np.array(query_embedding).reshape(1,-1)).flatten()
+    best_match_ids = similarities.argsort()[-top_k:][::-1]
+    relevant_chunks = [chunks[i] for i in best_match_ids]
+    return relevant_chunks
 
 
 def rag_text(document_texts: list[str]) -> None:
@@ -119,9 +121,11 @@ def rag_text(document_texts: list[str]) -> None:
 
     user_text = input('Amos: ')
     relevant_chunks = retrieve_relevant_chunks(
-    user_text, chunks, embeddings, embedder, top_k=3)
+    user_text, all_chunks, embeddings, embedder, top_k=3)
     context = "\n".join(relevant_chunks)
-    print(context)
+    for idx, chunk in enumerate(relevant_chunks):
+        print(f"Chunk {idx+1}: {chunk}\n")
+
 
 
 
