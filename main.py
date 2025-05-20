@@ -85,8 +85,8 @@ def chunk_text_by_character(text: str, max_chunk_length: int = 1000) -> list:
 
 
 def chunk_text_by_semantic(text: str, max_chunk_length: int = 2500) -> list:
-    max_characters = 200
-    splitter = TextSplitter((200, 2500))
+    min_characters = 200
+    splitter = TextSplitter((min_characters, max_chunk_length))
     chunks_no_model = splitter.chunks(text)
     for i, pedaco in enumerate(chunks_no_model):
         collection.add(documents=pedaco, ids=[str(i)])
@@ -140,7 +140,7 @@ def rag_text(document_texts: list[str]) -> None:
         all_chunks.extend(chunks)
 
     # Gera embeddings para todos os chunks
-    embed_chunks(all_chunks, embedder)
+    #embed_chunks(all_chunks, embedder)
 
     print(f"Total de chunks: {len(all_chunks)}")
 
@@ -182,7 +182,7 @@ def check_for_files(file_path: Path):
 
 
 def preprocess_question(question):
-    system_instruction = "Você é um assistente que reformula perguntas ou solicitações para que fiquem mais objetivas e claras no contexto de RPG de mesa Old Dragon. Deixe a pergunta mais direta sem mudar o sentido."
+    system_instruction = "Você é um assistente que reformula perguntas ou solicitações para que fiquem mais objetivas e claras no contexto de Guia Turístico do Estado do Amazonas. Deixe a pergunta mais direta sem mudar o sentido."
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -194,36 +194,40 @@ def preprocess_question(question):
     return response.choices[0].message.content.strip()
 
 def rag_operation():
-
     prompt = """
     Você é um assistente de Guia Turístico do Estado do Amazonas.
-    Use o seguinte contexto para responder a questão, não use nenhuma informação adicional, se não houver informacao no contexto, responda: Desculpe mas não consigo ajudar.
+    Use o seguinte contexto para responder a questão, não use nenhuma informação adicional,
+    se não houver informacao no contexto, responda: Desculpe mas não consigo ajudar.
     Sempre termine a resposta com: Foi um prazer lhe atender.
     """
-    messages_v = [{"role": "system", "content": prompt}]
+
     while True:
         user_text = input('Usuário: ')
-        processed_question = preprocess_question(user_text)
-        print(processed_question)
-        '''relevant_chunks = retrieve_relevant_chunks(
-        user_text, chunks, embedder, top_k=3)'''
-        #its using diferent embedders, maybe cause bug
-        relevant_chunks = collection.query(query_texts=[processed_question], n_results=5)
+        #processed_question = preprocess_question(user_text)
+        #print(f"Pergunta processada: {processed_question}")
+
+        relevant_chunks = collection.query(query_texts=[user_text], n_results=5)
+
         context = ""
         for idx, chunk in enumerate(relevant_chunks["documents"][0]):
             context += chunk + "\n"
             print(f"Chunk {idx+1}: {chunk}\n")
-        messages_v.append({"role": "system", "content": context})
-        messages_v.append({"role": "user", "content": processed_question})
+
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "system", "content": context},
+            {"role": "user", "content": user_text}
+        ]
+
         completion = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=messages_v
+            messages=messages
         )
+
         print(f"Assistente: {completion.choices[0].message.content}")
-        time.sleep(20)
-        messages_v.append(
-            {'role': 'system', 'content': completion.choices[0].message.content})
-        
+
+        time.sleep(20)  
+
 
 
 def main():
