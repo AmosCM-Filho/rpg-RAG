@@ -86,7 +86,7 @@ def chunk_text_by_character(text: str, max_chunk_length: int = 1000) -> list:
 
 def chunk_text_by_semantic(text: str, max_chunk_length: int = 2500) -> list:
     min_characters = 200
-    splitter = TextSplitter((min_characters, max_chunk_length))
+    splitter = TextSplitter((min_characters, max_chunk_length)) # Usa o all-MiniLM-L6-v2 por padrão
     chunks_no_model = splitter.chunks(text)
     for i, pedaco in enumerate(chunks_no_model):
         collection.add(documents=pedaco, ids=[str(i)])
@@ -190,7 +190,7 @@ def preprocess_question(question):
             {"role": "user", "content": question}
         ]
     )
-
+    print(response.choices[0].message.content.strip())
     return response.choices[0].message.content.strip()
 
 def rag_operation():
@@ -203,6 +203,7 @@ def rag_operation():
 
     while True:
         user_text = input('Usuário: ')
+        user_text = preprocess_question(user_text)
         #processed_question = preprocess_question(user_text)
         #print(f"Pergunta processada: {processed_question}")
 
@@ -226,7 +227,7 @@ def rag_operation():
 
         print(f"Assistente: {completion.choices[0].message.content}")
 
-        time.sleep(20)  
+        time.sleep(10)  
 
 
 
