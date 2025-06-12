@@ -79,8 +79,6 @@ def chunk_text_by_character(text: str, max_chunk_length: int = 1000) -> list:
     return chunks
 
 # 3. Here the text is split into chunks by semantic using the TextSplitter and let the chromaDB do the embedding
-
-
 def chunk_text_by_semantic(text: str, max_chunk_length: int = 2500) -> list:
     min_characters = 200
     # Usa o all-MiniLM-L6-v2 por padrão
