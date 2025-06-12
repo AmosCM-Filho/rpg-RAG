@@ -16,6 +16,8 @@ from semantic_chunker.core import SemanticChunker
 from semantic_text_splitter import TextSplitter
 from sklearn.metrics.pairwise import cosine_similarity
 from dotenv import load_dotenv
+import umap.umap_ as umap
+import matplotlib.pyplot as plt
 
 chroma_client = chromadb.Client()
 chroma_client = chromadb.PersistentClient(path="db")
@@ -26,6 +28,7 @@ load_dotenv()
 
 # Initialize the OpenAI client with your API key
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
 
 def read_file(file_path: Path) -> str:
     """
@@ -44,14 +47,6 @@ def read_file(file_path: Path) -> str:
         return text
     else:
         raise ValueError(f"Unsupported file type: {file_path.suffix}")
-
-
-def clean_text(text: str) -> str:
-    """
-    Remove sections like 'Bibliography' or 'References' if present.
-    """
-    match = re.search(r"(Bibliography|References)", text, re.IGNORECASE)
-    return text[:match.start()] if match else text
 
 
 def chunk_text_by_character(text: str, max_chunk_length: int = 1000) -> list:
@@ -83,10 +78,13 @@ def chunk_text_by_character(text: str, max_chunk_length: int = 1000) -> list:
 
     return chunks
 
+# 3. Here the text is split into chunks by semantic using the TextSplitter and let the chromaDB do the embedding
+
 
 def chunk_text_by_semantic(text: str, max_chunk_length: int = 2500) -> list:
     min_characters = 200
-    splitter = TextSplitter((min_characters, max_chunk_length)) # Usa o all-MiniLM-L6-v2 por padrão
+    # Usa o all-MiniLM-L6-v2 por padrão
+    splitter = TextSplitter((min_characters, max_chunk_length))
     chunks_no_model = splitter.chunks(text)
     for i, pedaco in enumerate(chunks_no_model):
         collection.add(documents=pedaco, ids=[str(i)])
@@ -123,6 +121,8 @@ def retrieve_relevant_chunks(query: str, chunks: list, embeddings: np.array,
 
     return [chunks[i] for i in best_match_ids]
 
+# 2. Then realize the chunk and embedding process
+
 
 def rag_text(document_texts: list[str]) -> None:
     """
@@ -134,15 +134,16 @@ def rag_text(document_texts: list[str]) -> None:
     all_chunks = []
 
     for doc in document_texts:
-        cleaned_text = clean_text(doc)
-        chunks = chunk_text_by_semantic(cleaned_text)
+        chunks = chunk_text_by_semantic(doc)
         # print(f"Documento dividido em {len(chunks)} chunks.")
         all_chunks.extend(chunks)
 
     # Gera embeddings para todos os chunks
-    #embed_chunks(all_chunks, embedder)
+    # embed_chunks(all_chunks, embedder)
 
     print(f"Total de chunks: {len(all_chunks)}")
+
+# 1. First check all files in file_path and transform in text
 
 
 def check_for_files(file_path: Path):
@@ -182,7 +183,8 @@ def check_for_files(file_path: Path):
 
 
 def preprocess_question(question):
-    system_instruction = "Você é um assistente que reformula perguntas ou solicitações para que fiquem mais objetivas e claras no contexto de Guia Turístico do Estado do Amazonas. Deixe a pergunta mais direta sem mudar o sentido."
+    system_instruction = "Você é um assistente que reformula perguntas ou solicitações para que fiquem mais objetivas" \
+        " e claras no contexto de Guia Turístico do Estado do Amazonas. Deixe a pergunta mais direta sem mudar o sentido."
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -192,6 +194,7 @@ def preprocess_question(question):
     )
     print(response.choices[0].message.content.strip())
     return response.choices[0].message.content.strip()
+
 
 def rag_operation():
     prompt = """
@@ -204,10 +207,11 @@ def rag_operation():
     while True:
         user_text = input('Usuário: ')
         user_text = preprocess_question(user_text)
-        #processed_question = preprocess_question(user_text)
-        #print(f"Pergunta processada: {processed_question}")
+        # processed_question = preprocess_question(user_text)
+        # print(f"Pergunta processada: {processed_question}")
 
-        relevant_chunks = collection.query(query_texts=[user_text], n_results=5)
+        relevant_chunks = collection.query(
+            query_texts=[user_text], n_results=5)
 
         context = ""
         for idx, chunk in enumerate(relevant_chunks["documents"][0]):
@@ -227,8 +231,39 @@ def rag_operation():
 
         print(f"Assistente: {completion.choices[0].message.content}")
 
-        time.sleep(10)  
+        time.sleep(10)
 
+
+def chunks_position_view():
+    # Pegando todos os ids da collection
+    all_ids = collection.get()['ids']
+
+    # Agora recupera os embeddings correspondentes
+    retrieved = collection.get(ids=all_ids, include=[
+                               'embeddings', 'documents'])
+
+    embeddings = retrieved['embeddings']
+    documents = retrieved['documents']
+
+    # Convertendo para numpy array
+    embeddings_np = np.array(embeddings)
+
+    # Reduzindo para 2D
+    reducer = umap.UMAP(random_state=42)
+    embedding_2d = reducer.fit_transform(embeddings_np)
+
+    plt.figure(figsize=(10, 7))
+    plt.scatter(embedding_2d[:, 0], embedding_2d[:, 1], c='blue', alpha=0.6)
+    plt.title("Distribuição dos Embeddings dos Chunks (UMAP)")
+    plt.xlabel("UMAP 1")
+    plt.ylabel("UMAP 2")
+    plt.grid(True)
+    # cores baseadas na ordem de chunk
+    colors = [i for i in range(len(documents))]
+    plt.scatter(embedding_2d[:, 0], embedding_2d[:, 1],
+                c=colors, cmap='viridis', alpha=0.8)
+    plt.colorbar()
+    plt.show()
 
 
 def main():
